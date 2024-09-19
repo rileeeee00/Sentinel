@@ -1,0 +1,107 @@
+#include <EEPROM.h>          // Library to use EEPROM
+#include "BluetoothSerial.h" // Library for Bluetooth communication
+#include <ESP32Servo.h>      // Library for controlling servos
+
+// Pin definitions
+const int buttonPin = 2;     // Button to manually toggle lock/unlock
+const int servoPin = 18;     // Servo motor pin
+const int pushbutton = 17;   // Pushbutton for manual door control
+const int indikator = 5;     // Indicator LED (on/off)
+const int buzzerPin = 19;    // Buzzer for alerts
+int state = 0;               // 0 = unlocked, 1 = locked
+int lastButtonState = LOW;   // Previous button state
+int buttonState;             // Current button state
+int sw = 0;                  // Variable to track system on/off
+bool IRSensor;               // Holds data from the infrared sensor
+int sistem_aktif;            // Tracks if the system is active
+int incoming;                // Bluetooth data holder
+
+Servo servo;                 // Servo object for door control
+BluetoothSerial ESP_BT;      // Bluetooth object
+
+void setup() {
+  // Initialize EEPROM, Bluetooth, and Servo
+  ESP_BT.begin("Security_System");    // Bluetooth name
+  servo.attach(servoPin, 550, 2400);  // Servo setup
+  
+  // Pin modes
+  pinMode(buttonPin, INPUT);          // Button pin as input
+  pinMode(pushbutton, INPUT_PULLUP);  // Pushbutton as input (manual door control)
+  pinMode(indikator, OUTPUT);         // Indicator LED as output
+  pinMode(2, INPUT);                  // Infrared sensor pin as input
+  pinMode(buzzerPin, OUTPUT);         // Buzzer as output
+  
+  // Initialize system with saved state from EEPROM
+  state = EEPROM.read(0); // Read saved state from EEPROM
+  if (state == 1) {
+    servo.write(180);     // Locked state
+    sistem_aktif = 1;     // System is active
+    digitalWrite(indikator, LOW);  // Turn on the indicator LED
+  } else {
+    servo.write(0);       // Unlocked state
+    sistem_aktif = 0;     // System is inactive
+    digitalWrite(indikator, HIGH); // Turn off the indicator LED
+  }
+}
+
+void loop() {
+  // Button to toggle lock/unlock (manual control)
+  buttonState = digitalRead(buttonPin); // Read button state
+  if (buttonState == HIGH && lastButtonState == LOW) {
+    // Toggle lock/unlock state
+    state = !state; // If locked, unlock and vice versa
+    EEPROM.write(0, state); // Save the new state to EEPROM
+
+    if (state == 1) {
+      servo.write(180); // Lock the door
+      sistem_aktif = 1; // Activate system
+      digitalWrite(indikator, LOW); // Turn on the LED
+    } else {
+      servo.write(0);   // Unlock the door
+      sistem_aktif = 0; // Deactivate system
+      digitalWrite(indikator, HIGH); // Turn off the LED
+    }
+  }
+  lastButtonState = buttonState; // Update last button state
+
+  // Pushbutton manual control (second method)
+  if (digitalRead(pushbutton) == 0 && sw == 0) {
+    servo.write(180);         // Lock the door
+    sistem_aktif = 1;         // Activate system
+    digitalWrite(indikator, LOW); // Turn on LED
+    sw = 1;                   // Set switch
+    delay(1000);              // Delay for debounce
+  } else if (digitalRead(pushbutton) == 0 && sw == 1) {
+    servo.write(0);           // Unlock the door
+    sistem_aktif = 0;         // Deactivate system
+    digitalWrite(indikator, HIGH); // Turn off LED
+    sw = 0;                   // Reset switch
+    delay(1000);              // Delay for debounce
+  }
+
+  // Bluetooth control
+  if (ESP_BT.available()) {
+    incoming = ESP_BT.read(); // Read Bluetooth data
+    if (incoming == '0') {    // Lock and enable system
+      servo.write(180);       // Lock the door
+      sistem_aktif = 1;       // Activate system
+      digitalWrite(indikator, LOW); // Turn on LED
+    } else if (incoming == '1') { // Unlock the door
+      servo.write(0);         // Unlock the door
+      sistem_aktif = 0;       // Deactivate system
+      digitalWrite(indikator, HIGH); // Turn off LED
+    }
+  }
+
+  // If the system is active and the infrared sensor detects an object
+  if (sistem_aktif == 1) {
+    IRSensor = digitalRead(2); // Read infrared sensor
+    if (IRSensor == 0) { // If an object is detected
+      digitalWrite(buzzerPin, LOW);  // Turn on buzzer
+      delay(5000);                   // 5 second delay
+      digitalWrite(buzzerPin, HIGH); // Turn off buzzer
+    } else {
+      digitalWrite(buzzerPin, HIGH); // Ensure buzzer is off
+    }
+  }
+}
