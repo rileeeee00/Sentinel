@@ -1,0 +1,54 @@
+#include <EEPROM.h>
+
+int buttonPin = 2;   // Pin where the button is connected
+int state = 0;       // 0 = unlocked, 1 = locked
+int lastButtonState = LOW; // Keeps track of the previous button state
+int buttonState;     // Stores the current button state
+
+void setup() {
+  pinMode(buttonPin, INPUT); // Set the button pin as input
+  Serial.begin(9600);        // Initialize Serial for output
+
+  // Step 1: Start EEPROM with a size of 1 byte
+  EEPROM.begin(1);  // 1 byte is enough to store a single state (0 or 1)
+
+  // Step 2: Read the saved state from EEPROM
+  state = EEPROM.read(0); // Read the lock state from address 0
+
+  // Step 3: Check the state and act accordingly
+  if (state == 1) {
+    Serial.println("Locked");
+  } else {
+    Serial.println("Unlocked");
+  }
+}
+
+void loop() {
+  // Step 4: Check the button press
+  buttonState = digitalRead(buttonPin); // Read the button state (pressed or not)
+
+  // Step 5: If the button was just pressed (state change)
+  if (buttonState == HIGH && lastButtonState == LOW) {
+    // Step 6: Toggle the lock/unlock state
+    state = !state; // If state was 1 (locked), it becomes 0 (unlocked), and vice versa
+
+    // Step 7: Write the new state to EEPROM
+    EEPROM.write(0, state); // Write the state to address '0'
+
+    // Step 8: Commit the changes to EEPROM
+    EEPROM.commit(); // Save the state in flash memory
+
+    // Step 9: Show the new state on the Serial Monitor
+    if (state == 1) {
+      Serial.println("Locked"); // Print "Locked" if it's now locked
+    } else {
+      Serial.println("Unlocked"); // Print "Unlocked" if it's now unlocked
+    }
+  }
+
+  // Step 10: Update the last button state for the next loop
+  lastButtonState = buttonState;
+
+  // Step 11: Add a short delay to debounce (avoid multiple button readings at once)
+  delay(50);
+}
